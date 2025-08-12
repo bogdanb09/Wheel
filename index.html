@@ -1,235 +1,426 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" >
 <head>
-<meta charset="UTF-8">
-<title>Custom Spin the Wheel</title>
-<style>
-    body { font-family: Arial, sans-serif; text-align: center; background: #f0f0f0; }
-    canvas { background: white; border-radius: 50%; }
+  <meta charset="UTF-8" />
+  <title>Spin the Wheel with Admin & Remove</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; background: #f0f0f0; margin:0; padding:0; }
+    canvas { background: white; border-radius: 50%; margin: 20px auto; display: block; }
     button, input, select { margin: 5px; padding: 5px 10px; }
-    #editPanel, #adminPanel { display: none; background: #fff; padding: 10px; margin: 10px auto; width: 300px; border-radius: 10px; }
-</style>
+    #editPanel, #adminPanel { 
+      display: none; background: #fff; padding: 15px; margin: 10px auto; 
+      width: 320px; border-radius: 10px; box-shadow: 0 0 10px #aaa; position: relative;
+    }
+    #adminPanel button.closeBtn {
+      position: absolute; top: 8px; right: 10px; font-weight: bold; border:none;
+      background: transparent; font-size: 20px; cursor: pointer;
+    }
+    #removeAfterSpin {
+      margin-top: 10px; display: none;
+    }
+  </style>
 </head>
 <body>
-<h1>🎯 Spin the Wheel</h1>
-<canvas id="wheelCanvas" width="400" height="400"></canvas><br>
-<button id="spinBtn">Spin</button>
-<button id="editBtn">Edit Wheel</button>
-<button id="adminBtn">Admin Settings</button>
-<select id="savedWheels"></select>
-<button id="loadWheel">Load Wheel</button>
-<button id="saveWheel">Save Wheel</button>
+  <h1>🎯 Spin the Wheel</h1>
+  <canvas id="wheelCanvas" width="400" height="400"></canvas>
 
-<div id="editPanel">
+  <div>
+    <button id="spinBtn">Spin</button>
+    <button id="editBtn">Edit Wheel</button>
+    <button id="adminBtn">Admin Settings</button>
+    <select id="savedWheels"></select>
+    <button id="loadWheel">Load Wheel</button>
+    <button id="saveWheel">Save Wheel</button>
+  </div>
+
+  <div id="editPanel">
     <h3>Edit Wheel</h3>
-    <input id="sliceText" placeholder="Slice Text">
-    <input id="sliceColor" type="color">
-    <button id="addSlice">Add Slice</button><br>
+    <input id="sliceText" placeholder="Slice Text" />
+    <input id="sliceColor" type="color" value="#ff0000" />
+    <button id="addSlice">Add Slice</button><br />
     <select id="sliceList"></select>
     <button id="removeSlice">Remove Selected</button>
-</div>
+  </div>
 
-<div id="adminPanel">
+  <div id="adminPanel">
+    <button class="closeBtn" id="adminCloseBtn">×</button>
     <h3>Admin Settings</h3>
     <div id="adminLogin">
-        <input id="adminPass" type="password" placeholder="Password">
-        <button id="loginBtn">Login</button>
+      <input id="adminPass" type="password" placeholder="Password" />
+      <button id="loginBtn">Login</button>
     </div>
     <div id="adminControls" style="display:none;">
-        <h4>Probabilities</h4>
-        <div id="probList"></div>
-        <h4>Forced Order</h4>
-        <div id="orderList"></div>
+      <h4>Probabilities (Sum ≤ 1)</h4>
+      <div id="probList"></div>
+      <h4>Forced Order</h4>
+      <div id="orderList"></div>
     </div>
-</div>
+  </div>
+
+  <button id="removeAfterSpin">Remove Picked Slice</button>
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-    const canvas = document.getElementById("wheelCanvas");
-    const ctx = canvas.getContext("2d");
-    let slices = [{text:"Slice 1", color:"#ff0000"},{text:"Slice 2", color:"#00ff00"},{text:"Slice 3", color:"#0000ff"}];
-    let probabilities = {}; 
-    let forcedOrder = [];
-    let spinning = false;
-    let currentAngle = 0;
+  const canvas = document.getElementById("wheelCanvas");
+  const ctx = canvas.getContext("2d");
 
-    function drawWheel() {
-        let arc = 2 * Math.PI / slices.length;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        slices.forEach((slice, i) => {
-            let angle = currentAngle + i * arc;
-            ctx.beginPath();
-            ctx.moveTo(200, 200);
-            ctx.arc(200, 200, 200, angle, angle + arc);
-            ctx.fillStyle = slice.color;
-            ctx.fill();
-            ctx.save();
-            ctx.translate(200, 200);
-            ctx.rotate(angle + arc / 2);
-            ctx.textAlign = "right";
-            ctx.fillStyle = "#fff";
-            ctx.font = "16px Arial";
-            ctx.fillText(slice.text, 180, 5);
-            ctx.restore();
-        });
+  // Main data
+  let slices = [
+    {text:"Slice 1", color:"#ff0000", visible:true},
+    {text:"Slice 2", color:"#00ff00", visible:true},
+    {text:"Slice 3", color:"#0000ff", visible:true}
+  ];
+
+  let probabilities = {}; // sliceText -> number (probability)
+  let forcedOrder = [];    // array of sliceText strings
+  let spinning = false;
+  let currentAngle = 0;
+  let lastPickedIndex = null;
+
+  // Draw the wheel using only visible slices
+  function drawWheel() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    const visibleSlices = slices.filter(s => s.visible);
+    if(visibleSlices.length === 0) return;
+
+    let arc = 2 * Math.PI / visibleSlices.length;
+    visibleSlices.forEach((slice, i) => {
+      let angle = currentAngle + i * arc;
+      ctx.beginPath();
+      ctx.moveTo(canvas.width/2, canvas.height/2);
+      ctx.arc(canvas.width/2, canvas.height/2, canvas.width/2, angle, angle + arc);
+      ctx.fillStyle = slice.color;
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.save();
+      ctx.translate(canvas.width/2, canvas.height/2);
+      ctx.rotate(angle + arc / 2);
+      ctx.textAlign = "right";
+      ctx.fillStyle = "#fff";
+      ctx.font = "16px Arial";
+      ctx.fillText(slice.text, canvas.width/2 - 10, 5);
+      ctx.restore();
+    });
+  }
+
+  // Get visible slice indices
+  function getVisibleIndices() {
+    let indices = [];
+    slices.forEach((s,i) => { if(s.visible) indices.push(i); });
+    return indices;
+  }
+
+  // Find visible slice index by sliceText
+  function findVisibleIndexByText(text) {
+    const visibleSlices = slices.filter(s => s.visible);
+    for(let i=0; i<visibleSlices.length; i++) {
+      if(visibleSlices[i].text === text) return i;
+    }
+    return -1;
+  }
+
+  // Spin logic picks a visible slice index to land on
+  function pickSliceIndex() {
+    const visibleIndices = getVisibleIndices();
+    if(visibleIndices.length === 0) return null;
+
+    // Forced order: pick next sliceText that is visible, cycle if needed
+    for(let i=0; i<forcedOrder.length; i++) {
+      let text = forcedOrder[0];
+      if(slices.some(s => s.visible && s.text === text)) {
+        // Move forcedOrder first element to the back (cycle)
+        forcedOrder.push(forcedOrder.shift());
+        return findVisibleIndexByText(text);
+      } else {
+        // Remove from forcedOrder if slice not visible
+        forcedOrder.shift();
+        i--;
+      }
     }
 
-    function spinWheel() {
-        if (spinning || slices.length === 0) return;
-        spinning = true;
-        let chosenIndex;
-        if (forcedOrder.length > 0) {
-            let next = forcedOrder.shift();
-            chosenIndex = slices.findIndex(s => s.text === next);
-        } else if (Object.keys(probabilities).length > 0) {
-            let total = slices.reduce((sum, s) => sum + (probabilities[s.text] || 1), 0);
-            let r = Math.random() * total;
-            let acc = 0;
-            for (let i = 0; i < slices.length; i++) {
-                acc += (probabilities[slices[i].text] || 1);
-                if (r <= acc) { chosenIndex = i; break; }
-            }
-        } else {
-            chosenIndex = Math.floor(Math.random() * slices.length);
-        }
-        let arc = 2 * Math.PI / slices.length;
-        let targetAngle = (3 * Math.PI / 2) - (chosenIndex * arc + arc / 2);
-        let spins = 5;
-        let finalAngle = spins * 2 * Math.PI + targetAngle;
-        let start = null;
-        function animate(time) {
-            if (!start) start = time;
-            let progress = (time - start) / 3000;
-            if (progress < 1) {
-                currentAngle = finalAngle * easeOut(progress);
-                drawWheel();
-                requestAnimationFrame(animate);
-            } else {
-                currentAngle = finalAngle;
-                drawWheel();
-                alert("Winner: " + slices[chosenIndex].text);
-                slices.splice(chosenIndex, 1);
-                drawWheel();
-                spinning = false;
-            }
-        }
+    // If no forced order, use probabilities (only visible slices)
+    let totalProb = 0;
+    let probs = [];
+    visibleIndices.forEach(i => {
+      let p = probabilities[slices[i].text];
+      if(typeof p !== "number" || p <= 0) p = 1;
+      probs.push(p);
+      totalProb += p;
+    });
+
+    let r = Math.random() * totalProb;
+    let accum = 0;
+    for(let j=0; j<visibleIndices.length; j++) {
+      accum += probs[j];
+      if(r <= accum) {
+        return j;
+      }
+    }
+
+    // fallback
+    return Math.floor(Math.random() * visibleIndices.length);
+  }
+
+  // Animate spin and land exactly on chosen slice index (visible slice index)
+  function animateSpin(chosenVisibleIndex) {
+    if(chosenVisibleIndex === null) {
+      alert("No slices to spin!");
+      spinning = false;
+      return;
+    }
+    spinning = true;
+    lastPickedIndex = chosenVisibleIndex;
+
+    const visibleSlicesCount = getVisibleIndices().length;
+    const arc = 2 * Math.PI / visibleSlicesCount;
+    const targetAngle = (3 * Math.PI / 2) - (chosenVisibleIndex * arc + arc / 2);
+    const spins = 6;
+    const finalAngle = spins * 2 * Math.PI + targetAngle;
+    let start = null;
+
+    function animate(time) {
+      if (!start) start = time;
+      let progress = (time - start) / 3500;
+      if (progress < 1) {
+        currentAngle = finalAngle * easeOut(progress);
+        drawWheel();
         requestAnimationFrame(animate);
-    }
-    function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+      } else {
+        currentAngle = finalAngle;
+        drawWheel();
+        spinning = false;
 
-    function refreshSliceList() {
-        let sel = document.getElementById("sliceList");
-        sel.innerHTML = "";
-        slices.forEach((s, i) => {
-            let opt = document.createElement("option");
-            opt.value = i;
-            opt.text = s.text;
-            sel.add(opt);
-        });
+        const visibleSlices = slices.filter(s => s.visible);
+        alert("Winner: " + visibleSlices[chosenVisibleIndex].text);
+        document.getElementById("removeAfterSpin").style.display = "inline-block";
+      }
     }
+    requestAnimationFrame(animate);
+  }
 
-    function refreshProbList() {
-        let div = document.getElementById("probList");
-        div.innerHTML = "";
-        slices.forEach(s => {
-            let input = document.createElement("input");
-            input.type = "number";
-            input.value = probabilities[s.text] || 1;
-            input.oninput = () => { probabilities[s.text] = parseFloat(input.value); saveState(); };
-            div.appendChild(document.createTextNode(s.text+": "));
-            div.appendChild(input);
-            div.appendChild(document.createElement("br"));
-        });
+  function easeOut(t) {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  // Button Handlers
+  document.getElementById("spinBtn").onclick = function() {
+    if(spinning) return;
+    document.getElementById("removeAfterSpin").style.display = "none";
+    let chosen = pickSliceIndex();
+    animateSpin(chosen);
+  };
+
+  document.getElementById("editBtn").onclick = function() {
+    const panel = document.getElementById("editPanel");
+    if(panel.style.display === "block") panel.style.display = "none";
+    else {
+      panel.style.display = "block";
+      refreshSliceList();
     }
+  };
 
-    function refreshOrderList() {
-        let div = document.getElementById("orderList");
-        div.innerHTML = "";
-        slices.forEach(s => {
-            let btn = document.createElement("button");
-            btn.textContent = "Add "+s.text;
-            btn.onclick = () => { forcedOrder.push(s.text); saveState(); refreshOrderList(); };
-            div.appendChild(btn);
-        });
-        div.appendChild(document.createElement("br"));
-        div.appendChild(document.createTextNode("Current Order: "+forcedOrder.join(", ")));
-    }
-
-    function saveState() {
-        localStorage.setItem("currentWheel", JSON.stringify({slices, probabilities, forcedOrder}));
-    }
-
-    function loadState() {
-        let saved = localStorage.getItem("currentWheel");
-        if (saved) {
-            let obj = JSON.parse(saved);
-            slices = obj.slices || slices;
-            probabilities = obj.probabilities || {};
-            forcedOrder = obj.forcedOrder || [];
-        }
-    }
-
-    document.getElementById("spinBtn").onclick = spinWheel;
-    document.getElementById("editBtn").onclick = () => {
-        document.getElementById("editPanel").style.display = "block";
-        refreshSliceList();
-    };
-    document.getElementById("adminBtn").onclick = () => {
-        document.getElementById("adminPanel").style.display = "block";
-    };
-    document.getElementById("addSlice").onclick = () => {
-        let text = document.getElementById("sliceText").value;
-        let color = document.getElementById("sliceColor").value || "#000";
-        if (text) { slices.push({text, color}); refreshSliceList(); saveState(); drawWheel(); }
-    };
-    document.getElementById("removeSlice").onclick = () => {
-        let idx = document.getElementById("sliceList").value;
-        if (idx >= 0) { slices.splice(idx, 1); refreshSliceList(); saveState(); drawWheel(); }
-    };
-    document.getElementById("loginBtn").onclick = () => {
-        if (document.getElementById("adminPass").value === "masluire") {
-            document.getElementById("adminLogin").style.display = "none";
-            document.getElementById("adminControls").style.display = "block";
-            refreshProbList();
-            refreshOrderList();
-        } else alert("Wrong password");
-    };
-    document.getElementById("saveWheel").onclick = () => {
-        let name = prompt("Enter wheel name:");
-        if (name) {
-            localStorage.setItem("wheel_"+name, JSON.stringify({slices, probabilities, forcedOrder}));
-            refreshWheelList();
-        }
-    };
-    document.getElementById("loadWheel").onclick = () => {
-        let sel = document.getElementById("savedWheels");
-        let saved = localStorage.getItem(sel.value);
-        if (saved) {
-            let obj = JSON.parse(saved);
-            slices = obj.slices;
-            probabilities = obj.probabilities;
-            forcedOrder = obj.forcedOrder;
-            saveState();
-            drawWheel();
-        }
-    };
-    function refreshWheelList() {
-        let sel = document.getElementById("savedWheels");
-        sel.innerHTML = "";
-        for (let i = 0; i < localStorage.length; i++) {
-            let key = localStorage.key(i);
-            if (key.startsWith("wheel_")) {
-                let opt = document.createElement("option");
-                opt.value = key;
-                opt.text = key.replace("wheel_", "");
-                sel.add(opt);
-            }
-        }
-    }
-
-    loadState();
-    refreshWheelList();
+  document.getElementById("addSlice").onclick = function() {
+    let text = document.getElementById("sliceText").value.trim();
+    let color = document.getElementById("sliceColor").value || "#000000";
+    if(text.length === 0) { alert("Enter slice text!"); return; }
+    slices.push({text,color,visible:true});
+    saveState();
     drawWheel();
+    refreshSliceList();
+  };
+
+  document.getElementById("sliceList").onchange = function() {
+    // optional: could show details here
+  };
+
+  document.getElementById("removeSlice").onclick = function() {
+    let idx = parseInt(document.getElementById("sliceList").value);
+    if(isNaN(idx)) return;
+    slices.splice(idx,1);
+    saveState();
+    drawWheel();
+    refreshSliceList();
+  };
+
+  // Remove slice after spin button
+  document.getElementById("removeAfterSpin").onclick = function() {
+    if(lastPickedIndex === null) return;
+    const visibleIndices = getVisibleIndices();
+    if(lastPickedIndex >= visibleIndices.length) return;
+    // Mark chosen slice invisible instead of removing it completely
+    let actualIndex = visibleIndices[lastPickedIndex];
+    slices[actualIndex].visible = false;
+    saveState();
+    drawWheel();
+    this.style.display = "none";
+  };
+
+  // Admin panel open/close
+  document.getElementById("adminBtn").onclick = function() {
+    const panel = document.getElementById("adminPanel");
+    if(panel.style.display === "block") return; // already open
+    document.getElementById("adminPass").value = "";
+    document.getElementById("adminLogin").style.display = "block";
+    document.getElementById("adminControls").style.display = "none";
+    panel.style.display = "block";
+  };
+  document.getElementById("adminCloseBtn").onclick = function() {
+    document.getElementById("adminPanel").style.display = "none";
+  };
+
+  document.getElementById("loginBtn").onclick = function() {
+    const pass = document.getElementById("adminPass").value;
+    if(pass === "masluire") {
+      document.getElementById("adminLogin").style.display = "none";
+      document.getElementById("adminControls").style.display = "block";
+      refreshProbList();
+      refreshOrderList();
+    } else {
+      alert("Wrong password");
+    }
+  };
+
+  // Probabilities inputs
+  function refreshProbList() {
+    const container = document.getElementById("probList");
+    container.innerHTML = "";
+    slices.forEach(s => {
+      let label = document.createElement("label");
+      label.textContent = s.text + ": ";
+      let input = document.createElement("input");
+      input.type = "number";
+      input.min = 0;
+      input.step = 0.01;
+      input.value = probabilities[s.text] ?? 1;
+      input.onchange = () => {
+        let val = parseFloat(input.value);
+        if(isNaN(val) || val < 0) val = 0;
+        probabilities[s.text] = val;
+        saveState();
+      };
+      label.appendChild(input);
+      container.appendChild(label);
+      container.appendChild(document.createElement("br"));
+    });
+  }
+
+  // Forced order list
+  function refreshOrderList() {
+    const container = document.getElementById("orderList");
+    container.innerHTML = "";
+
+    // Buttons to add slices to forcedOrder
+    slices.forEach(s => {
+      let btn = document.createElement("button");
+      btn.textContent = "Add " + s.text;
+      btn.onclick = () => {
+        forcedOrder.push(s.text);
+        saveState();
+        refreshOrderList();
+      };
+      container.appendChild(btn);
+    });
+    container.appendChild(document.createElement("br"));
+
+    // Show current forcedOrder
+    let orderDisplay = document.createElement("div");
+    orderDisplay.style.marginTop = "10px";
+    orderDisplay.textContent = "Current order: " + (forcedOrder.length ? forcedOrder.join(", ") : "(none)");
+    container.appendChild(orderDisplay);
+
+    // Button to clear order
+    let clearBtn = document.createElement("button");
+    clearBtn.textContent = "Clear Order";
+    clearBtn.onclick = () => {
+      forcedOrder = [];
+      saveState();
+      refreshOrderList();
+    };
+    container.appendChild(clearBtn);
+  }
+
+  // Save/load wheel states
+  document.getElementById("saveWheel").onclick = function() {
+    let name = prompt("Enter wheel name to save:");
+    if(!name) return;
+    localStorage.setItem("wheel_" + name, JSON.stringify({
+      slices,
+      probabilities,
+      forcedOrder
+    }));
+    refreshSavedWheels();
+  };
+
+  document.getElementById("loadWheel").onclick = function() {
+    const select = document.getElementById("savedWheels");
+    if(!select.value) return;
+    let saved = localStorage.getItem(select.value);
+    if(!saved) return alert("Wheel not found");
+    let data = JSON.parse(saved);
+
+    slices = data.slices || [];
+    probabilities = data.probabilities || {};
+    forcedOrder = data.forcedOrder || [];
+    drawWheel();
+    refreshSliceList();
+    saveState();
+  };
+
+  function refreshSavedWheels() {
+    const select = document.getElementById("savedWheels");
+    select.innerHTML = "";
+    Object.keys(localStorage).forEach(k => {
+      if(k.startsWith("wheel_")) {
+        let opt = document.createElement("option");
+        opt.value = k;
+        opt.textContent = k.slice(6);
+        select.appendChild(opt);
+      }
+    });
+  }
+
+  // Refresh slices list for edit panel
+  function refreshSliceList() {
+    const select = document.getElementById("sliceList");
+    select.innerHTML = "";
+    slices.forEach((s,i) => {
+      let opt = document.createElement("option");
+      opt.value = i;
+      opt.textContent = s.text + (s.visible ? "" : " (hidden)");
+      select.appendChild(opt);
+    });
+  }
+
+  // Save current state (except visible slices hidden remains)
+  function saveState() {
+    localStorage.setItem("currentWheelState", JSON.stringify({
+      slices,
+      probabilities,
+      forcedOrder
+    }));
+  }
+
+  // Load current state
+  function loadState() {
+    let saved = localStorage.getItem("currentWheelState");
+    if(!saved) return;
+    try {
+      let data = JSON.parse(saved);
+      slices = data.slices || slices;
+      probabilities = data.probabilities || {};
+      forcedOrder = data.forcedOrder || [];
+    } catch(e) {
+      console.warn("Failed to parse saved state");
+    }
+  }
+
+  // Initialize
+  loadState();
+  drawWheel();
+  refreshSliceList();
+  refreshSavedWheels();
+
 });
 </script>
 </body>
