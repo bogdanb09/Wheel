@@ -1,6 +1,128 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<meta charset="UTF-8">
+<title>Spin the Wheel</title>
+<style>
+body { font-family: Arial, sans-serif; background: #f8f8f8; text-align: center; }
+#canvas { margin: 20px auto; display: block; background: white; border-radius: 50%; }
+button { margin: 5px; padding: 10px; }
+.panel { background: white; padding: 10px; margin: 10px auto; width: 90%; max-width: 500px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+.hidden { display: none; }
+input[type=color] { border: none; padding: 0; }
+.slice-row { display: flex; justify-content: space-between; align-items: center; margin: 5px 0; }
+</style>
+</head>
+<body>
+
+<h1>🎯 Spin the Wheel</h1>
+<canvas id="canvas" width="500" height="500"></canvas>
+<div>
+  <button id="spinBtn">Spin</button>
+  <button id="addSliceBtn">Add Slice</button>
+  <button id="normalSettingsBtn">Edit Slices</button>
+  <button id="adminBtn">Admin Panel</button>
+  <button id="saveWheelBtn">Save Wheel</button>
+  <button id="loadWheelBtn">Load Wheel</button>
+</div>
+
+<!-- Normal Settings -->
+<div id="normalSettings" class="panel hidden">
+  <h3>Normal Settings</h3>
+  <div id="sliceList"></div>
+  <button id="closeNormalSettings">Close</button>
+</div>
+
+<!-- Admin Panel -->
+<div id="adminPanel" class="panel hidden">
+  <h3>Admin Panel</h3>
+  <div id="adminSliceList"></div>
+  <button id="closeAdminPanel">Close</button>
+</div>
+
+<!-- Load Wheels -->
+<div id="loadPanel" class="panel hidden">
+  <h3>Saved Wheels</h3>
+  <div id="savedWheels"></div>
+  <button id="closeLoadPanel">Close</button>
+</div>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let slices = [
+  { text: "Slice 1", color: "#FF0000" },
+  { text: "Slice 2", color: "#00FF00" },
+  { text: "Slice 3", color: "#0000FF" }
+];
+let probabilities = [];
+let orderQueue = [];
+let spinAngle = 0;
+let spinning = false;
+let spinTargetIndex = null;
+
+// Draw wheel
+function drawWheel() {
+  const arc = 2 * Math.PI / slices.length;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  slices.forEach((slice, i) => {
+    const angle = i * arc + spinAngle;
+    ctx.beginPath();
+    ctx.moveTo(canvas.width/2, canvas.height/2);
+    ctx.arc(canvas.width/2, canvas.height/2, canvas.width/2, angle, angle + arc);
+    ctx.fillStyle = slice.color;
+    ctx.fill();
+    ctx.save();
+    ctx.translate(canvas.width/2, canvas.height/2);
+    ctx.rotate(angle + arc / 2);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#fff";
+    ctx.font = "16px Arial";
+    ctx.fillText(slice.text, canvas.width/2 - 10, 5);
+    ctx.restore();
+  });
+}
+drawWheel();
+
+// Spin logic
+function spinWheel() {
+  if (spinning || slices.length === 0) return;
+  spinning = true;
+
+  // Choose target slice
+  let targetIndex;
+  if (orderQueue.length > 0) {
+    targetIndex = orderQueue.shift();
+    orderQueue.push(targetIndex);
+  } else if (probabilities.length === slices.length) {
+    let sum = probabilities.reduce((a,b)=>a+b, 0);
+    let r = Math.random() * sum;
+    let cumulative = 0;
+    for (let i=0; i<slices.length; i++) {
+      cumulative += probabilities[i];
+      if (r <= cumulative) { targetIndex = i; break; }
+    }
+  } else {
+    targetIndex = Math.floor(Math.random() * slices.length);
+  }
+  spinTargetIndex = targetIndex;
+
+  const arc = 2 * Math.PI / slices.length;
+  const targetAngle = (Math.PI/2) - (targetIndex * arc) - arc/2;
+  const spins = 5; // number of full spins
+  const finalAngle = targetAngle + spins * 2 * Math.PI;
+
+  let start = null;
+  const duration = 4000;
+
+  function animate(time) {
+    if (!start) start = time;
+    const progress = (time - start) / duration;
+    spinAngle = finalAngle * easeOut(progress);
+
+<html lang="en">
+<head>
 <meta charset="UTF-8" />
 <title>Spin Wheel with Secret Admin Settings</title>
 <style>
