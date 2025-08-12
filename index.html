@@ -629,4 +629,529 @@ function spinWheel() {
     while (slices.some(s => s.name === newName) || sliceMeta.hasOwnProperty(newName)) {
       count++;
       newName = baseName + " " + count;
+    }    targetIndex = Math.floor(Math.random() * slices.length);
+  }
+  spinTargetIndex = targetIndex;
+
+  const arc = 2 * Math.PI / slices.length;
+  const targetAngle = (Math.PI/2) - (targetIndex * arc) - arc/2;
+  const spins = 5; // number of full spins
+  const finalAngle = targetAngle + spins * 2 * Math.PI;
+
+  let start = null;
+  const duration = 4000;
+
+  function animate(time) {
+    if (!start) start = time;
+    const progress = (time - start) / duration;
+    spinAngle = finalAngle * easeOut(progress);
+
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Spin Wheel with Secret Admin Settings</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: #222;
+    color: white;
+    text-align: center;
+    margin: 0; padding: 20px;
+  }
+  #wheelCanvas {
+    border-radius: 50%;
+    border: 5px solid #444;
+    background: white;
+    margin: 20px auto;
+    display: block;
+  }
+  button, input, select {
+    font-size: 16px;
+    margin: 5px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: none;
+    outline: none;
+  }
+  button {
+    background-color: #3a8;
+    color: white;
+    cursor: pointer;
+  }
+  button:hover {
+    background-color: #2a6;
+  }
+  #editor, #adminPanel {
+    background: #333;
+    max-width: 700px;
+    margin: 20px auto;
+    border-radius: 10px;
+    padding: 15px;
+    text-align: left;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    color: white;
+  }
+  th, td {
+    padding: 6px;
+    border-bottom: 1px solid #555;
+    text-align: center;
+  }
+  input.color {
+    width: 40px;
+    height: 30px;
+    padding: 0;
+    border: none;
+    cursor: pointer;
+  }
+  #adminPanel {
+    display: none;
+  }
+  #removeSliceBtn {
+    margin-top: 10px;
+    background-color: #b33;
+  }
+  #secretAdminBtn {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    background: #555;
+    color: #ccc;
+    padding: 8px 12px;
+    font-size: 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+  #orderList {
+    list-style: none;
+    padding-left: 0;
+    max-height: 150px;
+    overflow-y: auto;
+    border: 1px solid #555;
+    margin-top: 5px;
+  }
+  #orderList li {
+    background: #444;
+    margin: 3px 0;
+    padding: 5px 8px;
+    cursor: grab;
+    user-select: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #orderList li span {
+    flex-grow: 1;
+    text-align: left;
+  }
+  #orderList li button {
+    background: #b33;
+    border: none;
+    color: white;
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 2px 6px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Spin The Wheel 🎡</h1>
+<canvas id="wheelCanvas" width="500" height="500"></canvas><br>
+<button id="spinBtn">Spin the Wheel</button>
+<button id="removeSliceBtn" style="display:none;">Remove Picked Slice</button>
+
+<div id="editor">
+  <h2>Edit Slices</h2>
+  <button id="addSliceBtn">Add Slice</button>
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Color</th><th>Remove</th></tr>
+    </thead>
+    <tbody id="sliceTableBody"></tbody>
+  </table>
+</div>
+
+<div id="adminPanel">
+  <h2>Admin Settings (Password protected)</h2>
+  <p>Set slice probabilities and pick order.</p>
+  <h3>Probabilities</h3>
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Probability</th></tr>
+    </thead>
+    <tbody id="probTableBody"></tbody>
+  </table>
+  <h3>Pick Order (drag to reorder)</h3>
+  <ul id="orderList"></ul>
+  <button id="saveAdminBtn">Save Admin Settings</button>
+  <button id="closeAdminBtn">Close Admin Panel</button>
+</div>
+
+<div id="secretAdminBtn" title="Admin Settings (password required)">⚙️</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('wheelCanvas');
+  const ctx = canvas.getContext('2d');
+  const spinBtn = document.getElementById('spinBtn');
+  const removeSliceBtn = document.getElementById('removeSliceBtn');
+  const addSliceBtn = document.getElementById('addSliceBtn');
+  const sliceTableBody = document.getElementById('sliceTableBody');
+  const adminPanel = document.getElementById('adminPanel');
+  const probTableBody = document.getElementById('probTableBody');
+  const orderList = document.getElementById('orderList');
+  const saveAdminBtn = document.getElementById('saveAdminBtn');
+  const closeAdminBtn = document.getElementById('closeAdminBtn');
+  const secretAdminBtn = document.getElementById('secretAdminBtn');
+
+  const password = "masluire";
+
+  // slices visible to user and editor
+  let slices = [
+    { name: "Alice", color: "#FF6666", visible: true },
+    { name: "Bob", color: "#66FF66", visible: true },
+    { name: "Charlie", color: "#6666FF", visible: true }
+  ];
+
+  // all slice metadata: probability & stored even if slice removed from slices array
+  // key: sliceName => { probability: number }
+  let sliceMeta = {};
+
+  // pick order array (slice names)
+  let pickOrder = [];
+  let orderIndex = 0; // tracks current pick order position
+
+  let startAngle = 0;
+  let spinAngle = 0;
+  let spinning = false;
+  let lastPickedIndex = null;
+
+  // Utility: sync sliceMeta from slices for new slices
+  function syncSliceMeta() {
+    for (const slice of slices) {
+      if (!sliceMeta.hasOwnProperty(slice.name)) {
+        sliceMeta[slice.name] = { probability: 1 };
+      }
+    }
+  }
+
+  // Clean pickOrder: remove names not in sliceMeta at all
+  function cleanPickOrder() {
+    pickOrder = pickOrder.filter(name => sliceMeta.hasOwnProperty(name));
+  }
+
+  // Draw the wheel
+  function drawWheel() {
+    const visibleSlices = slices.filter(s => s.visible);
+    const len = visibleSlices.length;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (len === 0) {
+      ctx.fillStyle = "black";
+      ctx.font = "24px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("No visible slices!", canvas.width / 2, canvas.height / 2);
+      return;
+    }
+    const arc = 2 * Math.PI / len;
+    visibleSlices.forEach((slice, i) => {
+      const angle = startAngle + i * arc;
+      ctx.beginPath();
+      ctx.moveTo(canvas.width/2, canvas.height/2);
+      ctx.arc(canvas.width/2, canvas.height/2, canvas.width/2, angle, angle + arc);
+      ctx.fillStyle = slice.color;
+      ctx.fill();
+      ctx.strokeStyle = "#222";
+      ctx.stroke();
+
+      ctx.save();
+      ctx.translate(canvas.width/2, canvas.height/2);
+      ctx.rotate(angle + arc/2);
+      ctx.textAlign = "right";
+      ctx.fillStyle = "#000";
+      ctx.font = "bold 18px Arial";
+      ctx.fillText(slice.name, canvas.width/2 - 20, 10);
+      ctx.restore();
+    });
+
+    // Pointer
+    ctx.fillStyle = "red";
+    ctx.beginPath();
+    ctx.moveTo(canvas.width/2 - 15, 10);
+    ctx.lineTo(canvas.width/2 + 15, 10);
+    ctx.lineTo(canvas.width/2, 40);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Animate spin to land exactly on targetIndex slice
+  function animateSpin(targetIndex) {
+    if (spinAngle > 0.1) {
+      startAngle += spinAngle / 20;
+      spinAngle *= 0.97;
+      drawWheel();
+      requestAnimationFrame(() => animateSpin(targetIndex));
+    } else {
+      spinning = false;
+      startAngle = startAngle % (2 * Math.PI);
+      if (typeof targetIndex === 'number' && targetIndex !== null) {
+        const visibleSlices = slices.filter(s => s.visible);
+        const arc = 2 * Math.PI / visibleSlices.length;
+        // Calculate startAngle so pointer points at chosen slice:
+        startAngle = (3 * Math.PI) / 2 - (targetIndex * arc + arc / 2);
+        drawWheel();
+      }
+      drawWheel();
+      lastPickedIndex = targetIndex;
+      removeSliceBtn.style.display = "inline-block";
+      alert("Winner: " + slices.filter(s => s.visible)[targetIndex].name);
+    }
+  }
+
+  // Weighted random index based on sliceMeta probabilities for visible slices
+  function weightedRandomIndex(visibleSlices) {
+    const total = visibleSlices.reduce((sum, s) => sum + (sliceMeta[s.name]?.probability ?? 1), 0);
+    let rand = Math.random() * total;
+    for (let i = 0; i < visibleSlices.length; i++) {
+      rand -= sliceMeta[visibleSlices[i].name]?.probability ?? 1;
+      if (rand <= 0) return i;
+    }
+    return visibleSlices.length - 1;
+  }
+
+  // Spin the wheel logic
+  function spinWheel() {
+    if (spinning) return;
+    const visibleSlices = slices.filter(s => s.visible);
+    if (visibleSlices.length === 0) {
+      alert("No visible slices to spin!");
+      return;
+    }
+
+    spinning = true;
+    removeSliceBtn.style.display = "none";
+
+    let chosenIndex;
+
+    if (pickOrder.length > 0) {
+      // Find next visible slice in pick order, cycling through order
+      let tries = 0;
+      let found = false;
+      while (tries < pickOrder.length) {
+        const sliceName = pickOrder[orderIndex];
+        chosenIndex = visibleSlices.findIndex(s => s.name === sliceName);
+        orderIndex = (orderIndex + 1) % pickOrder.length;
+        if (chosenIndex !== -1) {
+          found = true;
+          break;
+        }
+        tries++;
+      }
+      if (!found) {
+        // fallback weighted random
+        chosenIndex = weightedRandomIndex(visibleSlices);
+      }
+    } else {
+      // Weighted random spin
+      chosenIndex = weightedRandomIndex(visibleSlices);
+    }
+
+    spinAngle = Math.random() * 2 * Math.PI + 10 * Math.PI;
+    animateSpin(chosenIndex);
+  }
+
+  // Update editor table with slices
+  function updateEditorTable() {
+    sliceTableBody.innerHTML = "";
+    slices.forEach((slice, i) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td><input type="text" value="${slice.name}" data-index="${i}" class="slice-name" /></td>
+        <td><input type="color" value="${slice.color}" data-index="${i}" class="slice-color" /></td>
+        <td><button data-index="${i}" class="remove-slice-btn">Remove</button></td>
+      `;
+      sliceTableBody.appendChild(row);
+    });
+  }
+
+  // Update admin probability table
+  function updateProbTable() {
+    probTableBody.innerHTML = "";
+    slices.forEach(slice => {
+      const prob = sliceMeta[slice.name]?.probability ?? 1;
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${slice.name}</td>
+        <td><input type="number" min="0" step="0.1" value="${prob}" data-name="${slice.name}" class="prob-input" /></td>
+      `;
+      probTableBody.appendChild(row);
+    });
+  }
+
+  // Update pick order list UI
+  function updateOrderList() {
+    orderList.innerHTML = "";
+    pickOrder.forEach((name, i) => {
+      const li = document.createElement("li");
+      li.setAttribute("draggable", "true");
+      li.dataset.index = i;
+      li.innerHTML = `<span>${name}</span><button data-index="${i}">✖</button>`;
+      orderList.appendChild(li);
+    });
+  }
+
+  // Drag & drop handlers for pick order list
+  let dragSrcEl = null;
+  function handleDragStart(e) {
+    dragSrcEl = e.target;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', e.target.innerHTML);
+  }
+  function handleDragOver(e) {
+    if (e.preventDefault) e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    return false;
+  }
+  function handleDrop(e) {
+    if (e.stopPropagation) e.stopPropagation();
+    if (dragSrcEl !== this) {
+      const srcIndex = dragSrcEl.dataset.index;
+      const tgtIndex = this.dataset.index;
+      const tmp = pickOrder[srcIndex];
+      pickOrder[srcIndex] = pickOrder[tgtIndex];
+      pickOrder[tgtIndex] = tmp;
+      updateOrderList();
+      addOrderListListeners();
+    }
+    return false;
+  }
+  function handleDragEnd() {}
+
+  // Add event listeners to order list items
+  function addOrderListListeners() {
+    const items = orderList.querySelectorAll("li");
+    items.forEach(item => {
+      item.addEventListener("dragstart", handleDragStart);
+      item.addEventListener("dragover", handleDragOver);
+      item.addEventListener("drop", handleDrop);
+      item.addEventListener("dragend", handleDragEnd);
+      const btn = item.querySelector("button");
+      btn.onclick = () => {
+        const idx = parseInt(btn.dataset.index);
+        pickOrder.splice(idx, 1);
+        updateOrderList();
+        addOrderListListeners();
+      };
+    });
+  }
+
+  // Sync pickOrder with slices (remove names not in sliceMeta)
+  function sanitizePickOrder() {
+    pickOrder = pickOrder.filter(name => sliceMeta.hasOwnProperty(name));
+  }
+
+  // Add all slices not yet in pickOrder (keeps admin panel order complete)
+  function syncPickOrderWithSlices() {
+    sanitizePickOrder();
+    slices.forEach(s => {
+      if (!pickOrder.includes(s.name)) {
+        pickOrder.push(s.name);
+      }
+    });
+  }
+
+  // Handle remove slice button click (after spin)
+  removeSliceBtn.onclick = () => {
+    if (lastPickedIndex === null) return;
+    const visibleSlices = slices.filter(s => s.visible);
+    if (lastPickedIndex >= visibleSlices.length) return;
+
+    const sliceName = visibleSlices[lastPickedIndex].name;
+
+    // Remove from slices array (visible list)
+    const idx = slices.findIndex(s => s.name === sliceName);
+    if (idx !== -1) {
+      slices.splice(idx, 1);
+    }
+
+    // Mark the slice as hidden but keep sliceMeta to preserve probability info
+    // Actually, we just removed from slices array, but sliceMeta keeps data
+    // So on next admin load, sliceMeta is preserved even for removed slices
+
+    // Also remove sliceName from pickOrder (optional: but recommended)
+    pickOrder = pickOrder.filter(name => name !== sliceName);
+
+    // Reset lastPickedIndex and hide remove button
+    lastPickedIndex = null;
+    removeSliceBtn.style.display = "none";
+
+    updateEditorTable();
+    updateProbTable();
+    updateOrderList();
+    addOrderListListeners();
+    drawWheel();
+  };
+
+  // Editor table event listeners
+  sliceTableBody.addEventListener("input", e => {
+    const target = e.target;
+    if (target.classList.contains("slice-name")) {
+      const idx = target.dataset.index;
+      const oldName = slices[idx].name;
+      const newName = target.value.trim();
+      if (!newName) return;
+      // Update slice name
+      slices[idx].name = newName;
+
+      // Update sliceMeta key if changed
+      if (oldName !== newName) {
+        if (sliceMeta.hasOwnProperty(oldName)) {
+          sliceMeta[newName] = sliceMeta[oldName];
+          delete sliceMeta[oldName];
+        } else {
+          sliceMeta[newName] = { probability: 1 };
+        }
+        // Also update pickOrder names
+        pickOrder = pickOrder.map(n => n === oldName ? newName : n);
+      }
+      updateProbTable();
+      updateOrderList();
+      addOrderListListeners();
+    }
+    if (target.classList.contains("slice-color")) {
+      const idx = target.dataset.index;
+      slices[idx].color = target.value;
+      drawWheel();
+    }
+  });
+
+  // Remove slice from editor
+  sliceTableBody.addEventListener("click", e => {
+    if (e.target.classList.contains("remove-slice-btn")) {
+      const idx = e.target.dataset.index;
+      const removed = slices.splice(idx, 1)[0];
+      // Keep sliceMeta but slice is removed from visible slices
+      // Remove from pickOrder as well
+      pickOrder = pickOrder.filter(n => n !== removed.name);
+      updateEditorTable();
+      updateProbTable();
+      updateOrderList();
+      addOrderListListeners();
+      drawWheel();
+    }
+  });
+
+  // Add slice button
+  addSliceBtn.onclick = () => {
+    const baseName = "New Slice";
+    let newName = baseName;
+    let count = 1;
+    while (slices.some(s => s.name === newName) || sliceMeta.hasOwnProperty(newName)) {
+      count++;
+      newName = baseName + " " + count;
     }
